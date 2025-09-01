@@ -1,0 +1,95 @@
+@using AdminP.Services
+@inject INotificationService NotificationService
+@inject IComputerService ComputerService
+
+<div class="notification-panel position-fixed top-0 end-0 p-3" style="z-index: 1050; max-width: 400px;">
+    @foreach (var notification in NotificationService.Notifications)
+    {
+        <div class="alert alert-@GetAlertType(notification.Type) alert-dismissible fade show mb-2" role="alert">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <h6 class="alert-heading mb-1">@notification.Title</h6>
+                    <p class="mb-2">@notification.Message</p>
+                    
+                    @if (notification.Type == NotificationType.SessionRequest && notification.Data is SessionRequest sessionRequest)
+                    {
+                        <div class="session-request-form">
+                            <div class="row g-2">
+                                <div class="col-8">
+                                    <input type="number" class="form-control form-control-sm" 
+                                           @bind="sessionDurationMinutes" 
+                                           placeholder="Время (мин)" min="1" max="480" />
+                                </div>
+                                <div class="col-4">
+                                    <button class="btn btn-sm btn-success" @onclick="() => ApproveSession(sessionRequest)">
+                                        Одобрить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    
+                    @if (notification.Type == NotificationType.UnknownPc && notification.Data is UnknownPcData pcData)
+                    {
+                        <div class="unknown-pc-form">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <button class="btn btn-sm btn-primary w-100" @onclick="() => OpenAddPcModal(pcData)">Добавить ПК</button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-sm btn-outline-secondary w-100" @onclick="() => Dismiss(notification.Id)">Отклонить</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                
+                @if (!notification.IsPersistent)
+                {
+                    <button type="button" class="btn-close" @onclick="() => NotificationService.RemoveNotification(notification.Id)"></button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private int sessionDurationMinutes = 30;
+
+    protected override void OnInitialized()
+    {
+        NotificationService.OnNotificationsChanged += StateHasChanged;
+    }
+
+    private string GetAlertType(NotificationType type) => type switch
+    {
+        NotificationType.Info => "info",
+        NotificationType.Warning => "warning",
+        NotificationType.Error => "danger",
+        NotificationType.SessionRequest => "primary",
+        NotificationType.UnknownPc => "warning",
+        _ => "info"
+    };
+
+    private async Task ApproveSession(SessionRequest request)
+    {
+        var response = new SessionResponse
+        {
+            PcId = request.PcId,
+            Username = request.Username,
+            DurationMinutes = sessionDurationMinutes,
+            RequestedAt = DateTime.Now,
+            IsApproved = true
+        };
+        
+        await NotificationService.SendSessionResponseAsync(response);
+        NotificationService.RemoveNotification(NotificationService.Notifications.First(n => n.Data == request).Id);
+    }
+
+    private void OpenAddPcModal(UnknownPcData data)
+    {
+        NotificationService.RequestAddComputer(data.Uuid);
+    }
+
+    private void Dismiss(string id) => NotificationService.RemoveNotification(id);
+}
