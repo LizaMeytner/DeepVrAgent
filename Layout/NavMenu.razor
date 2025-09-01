@@ -1,0 +1,48 @@
+﻿<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">AdminP</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable position-relative" @onclick="ToggleNavMenu">
+    <nav class="nav flex-column" style="padding-bottom: 3.5rem;">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="computers/list" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Список ПК
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="computers/cards">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Карточки ПК
+            </NavLink>
+        </div>
+    </nav>
+    <div class="px-3 pb-3 position-absolute" style="left: 0; bottom: 0;">
+        <button class="btn btn-sm btn-outline-danger" @onclick="Logout">Выйти</button>
+    </div>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private async Task Logout()
+    {
+        await JS.InvokeVoidAsync("localStorage.removeItem", "accessToken");
+        await JS.InvokeVoidAsync("localStorage.removeItem", "refreshToken");
+        await JS.InvokeVoidAsync("localStorage.removeItem", "authUserName");
+        Nav.NavigateTo("/admin-login", true);
+    }
+}

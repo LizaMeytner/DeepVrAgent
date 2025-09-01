@@ -1,0 +1,139 @@
+﻿@inherits LayoutComponentBase
+@inject MetricsHubService hub
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4 d-flex justify-content-between align-items-center">
+            <div class="fw-bold">@_userName</div>
+            <button class="btn btn-sm btn-primary w-auto" style="flex: 0 0 auto;" @onclick="AddComputer">Добавить компьютер</button>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<NotificationPanel />
+
+@code {
+    [Inject] private AdminP.Services.IComputerService ComputerService { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IAuthService Auth { get; set; } = default!;
+    [Inject] private INotificationService Notifications { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        hub.OnPcAddedEvent += HubOnOnPcAdded;
+        Notifications.OnAddComputerRequested += PrefillAndOpenAddModal;
+        base.OnInitialized();
+    }
+
+    private void HubOnOnPcAdded(Guid uuid)
+    {
+        // Handle PC added event from hub if needed
+        // For now, just refresh the computer list
+        ComputerService.InitializeAsync();
+    }
+
+    private async Task AddComputer()
+    {
+        // Open modal with mocked available computers list
+        OpenAddModal();
+    }
+
+    private bool _showAddModal;
+    private string _userName = "Admin";
+    private bool _checkedAuth;
+    private string _formUuid = string.Empty;
+    private string _formName = string.Empty;
+    private string _formIp = string.Empty;
+    private string _formHostName = string.Empty;
+
+    private void OpenAddModal() => _showAddModal = true;
+
+    private void CloseAddModal()
+    {
+        _showAddModal = false;
+        _formUuid = string.Empty;
+        _formName = string.Empty;
+        _formIp = string.Empty;
+        _formHostName = string.Empty;
+    }
+
+    private void PrefillAndOpenAddModal(Guid uuid)
+    {
+        _formUuid = uuid.ToString();
+        OpenAddModal();
+        StateHasChanged();
+    }
+
+    private async Task SubmitAddForm()
+    {
+        if (Guid.TryParse(_formUuid, out var uuid) && !string.IsNullOrWhiteSpace(_formName) && !string.IsNullOrWhiteSpace(_formIp) && !string.IsNullOrWhiteSpace(_formHostName))
+        {
+            await ComputerService.AddComputerByUuidAsync(uuid, _formName.Trim(), _formIp.Trim(), _formHostName.Trim());
+            CloseAddModal();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var stored = await JS.InvokeAsync<string>("localStorage.getItem", "authUserName");
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            _userName = stored;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_checkedAuth)
+        {
+            _checkedAuth = true;
+            var token = await JS.InvokeAsync<string>("localStorage.getItem", "accessToken");
+            if (string.IsNullOrWhiteSpace(token)) Nav.NavigateTo("/admin-login", true);
+        }
+    }
+}
+
+@* Add Computer Modal *@
+@if (_showAddModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Добавить компьютер</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">UUID</label>
+                        <input class="form-control" @bind="_formUuid" placeholder="Введите UUID" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">IP</label>
+                        <input class="form-control" @bind="_formIp" placeholder="Введите IP" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Host Name</label>
+                        <input class="form-control" @bind="_formHostName" placeholder="Введите Host Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Имя</label>
+                        <input class="form-control" @bind="_formName" placeholder="Введите имя" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddModal">Закрыть</button>
+                    <button class="btn btn-primary" @onclick="SubmitAddForm" disabled="@(string.IsNullOrWhiteSpace(_formUuid) || _formName.Trim().Length == 0 || _formIp.Trim().Length == 0 || _formHostName.Trim().Length == 0)">Добавить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

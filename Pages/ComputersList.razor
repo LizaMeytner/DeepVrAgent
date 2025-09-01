@@ -1,0 +1,143 @@
+@page "/computers/list"
+@inject IComputerService ComputerService
+@inject NavigationManager Nav
+
+<PageTitle>Список ПК</PageTitle>
+
+<!-- add button only in top bar; removed local button -->
+
+@if (ComputerService.Computers == null || !ComputerService.Computers.Any())
+{
+    <div class="alert alert-info">Нет компьютеров</div>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th role="button" @onclick="() => SortBy(SortKey.Name)">Имя @(_sortKey == SortKey.Name ? "↓" : string.Empty)</th>
+                <th role="button" @onclick="() => SortBy(SortKey.Ip)">IP @(_sortKey == SortKey.Ip ? "↓" : string.Empty)</th>
+                <th role="button" @onclick="() => SortBy(SortKey.Status)">Статус @(_sortKey == SortKey.Status ? "↓" : string.Empty)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var pc in Sorted(ComputerService.Computers))
+            {
+                <tr>
+                    <td>@pc.Name</td>
+                    <td>@pc.IP</td>
+                    <td>
+                        <span class="badge @(pc.IsInUse ? "bg-danger" : "bg-success")">@(pc.IsInUse ? "Занят" : "Свободен")</span>
+                    </td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger me-2" @onclick="() => Delete(pc.Uuid)">Удалить</button>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenDetails(pc.Uuid)">Подробнее</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+     </table>
+}
+
+@if (_showDetails && _selected != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@_selected.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDetails"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <div><strong>UUID:</strong> @_selected.Uuid</div>
+                            <div><strong>IP:</strong> @_selected.IP</div>
+                            <div><strong>Статус:</strong> @(_selected.IsInUse ? "Занят" : "Свободен")</div>
+                            <div><strong>Онлайн:</strong> @(_selected.IsOnline ? "Да" : "Нет")</div>
+                        </div>
+                        <div class="col-6">
+                            @if (_selected.LatestMetrics != null)
+                            {
+                                <div><strong>CPU:</strong> @_selected.LatestMetrics.Cpu.ToString("F1")%</div>
+                                <div class="progress"><div class="progress-bar" style="width:@_selected.LatestMetrics.Cpu%"></div></div>
+                                <div class="mt-2"><strong>RAM:</strong> @_selected.LatestMetrics.Ram.ToString("F1")%</div>
+                                <div class="progress"><div class="progress-bar bg-warning" style="width:@_selected.LatestMetrics.Ram%"></div></div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDetails">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showDetails;
+    private Computer? _selected;
+
+    private enum SortKey { Name, Ip, Status }
+    private SortKey _sortKey = SortKey.Name;
+
+    protected override void OnInitialized()
+    {
+        ComputerService.OnChanged += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ComputerService.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+
+    private IEnumerable<Computer> Sorted(IEnumerable<Computer> items)
+    {
+        return _sortKey switch
+        {
+            SortKey.Name => items.OrderBy(c => string.IsNullOrEmpty(c.Name) ? '~' : char.ToUpperInvariant(c.Name[0])),
+            SortKey.Ip => items.OrderBy(c => ParseIpKey(c.IP)),
+            SortKey.Status => items.OrderByDescending(c => c.IsInUse),
+            _ => items
+        };
+    }
+
+    private void SortBy(SortKey key) => _sortKey = key;
+
+    // add action moved to layout
+
+    private async Task Delete(Guid uuid)
+    {
+        await ComputerService.DeleteComputerAsync(uuid);
+    }
+
+    private async Task OpenDetails(Guid uuid)
+    {
+        _selected = await ComputerService.GetByUuidAsync(uuid);
+        _showDetails = _selected != null;
+    }
+
+    private void CloseDetails()
+    {
+        _showDetails = false;
+        _selected = null;
+    }
+
+    private static (int a, int b, int c, int d) ParseIpKey(string ip)
+    {
+        var parts = ip.Split('.');
+        if (parts.Length == 4 && int.TryParse(parts[0], out var a) && int.TryParse(parts[1], out var b) && int.TryParse(parts[2], out var c) && int.TryParse(parts[3], out var d))
+        {
+            return (a, b, c, d);
+        }
+        return (0, 0, 0, 0);
+    }
+}
+
+

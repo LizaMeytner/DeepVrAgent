@@ -1,0 +1,118 @@
+﻿@page "/admin-login"
+@page "/"
+@layout EmptyLayout
+@using System.ComponentModel.DataAnnotations
+@using AdminP.Shared
+@inject NavigationManager Navigation
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="login-container">
+    <div class="login-form">
+        <h2>Вход в админ панель</h2>
+
+        <EditForm Model="@loginModel" OnValidSubmit="@HandleLogin">
+            <DataAnnotationsValidator/>
+
+            <div class="form-group">
+                <label>Имя администратора:</label>
+                <InputText @bind-Value="loginModel.Name" class="form-control"/>
+                <ValidationMessage For="@(() => loginModel.Name)"/>
+            </div>
+
+            <div class="form-group">
+                <label>Пароль:</label>
+                <InputText type="password" @bind-Value="loginModel.Password" class="form-control"/>
+                <ValidationMessage For="@(() => loginModel.Password)"/>
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner"></span>
+                }
+                Войти
+            </button>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-error">@errorMessage</div>
+            }
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new LoginModel();
+    private bool isLoading = false;
+    private string errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Если уже аутентифицированы (токен сохранен) — перенаправляем на главную
+        var token = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "accessToken");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            Navigation.NavigateTo("/computers/list", forceLoad: true);
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            // 1. ВСЕГДА проверяем через бэкенд
+            var response = await Http.PostAsJsonAsync("auth/login/admin", new
+            {
+                name = loginModel.Name,
+                password = loginModel.Password
+            });
+
+            // 2. Проверяем ответ от бэкенда
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<LoginResults>();
+
+                // 3. Сохраняем access/refresh токены
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", "accessToken", result?.AccessToken ?? string.Empty);
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", "refreshToken", result?.RefreshToken ?? string.Empty);
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", "authUserName", loginModel.Name);
+
+                Navigation.NavigateTo("/computers/list");
+            }
+            else
+            {
+                errorMessage = "Неверный логин или пароль";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Ошибка соединения";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAuthData(string token)
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "accessToken", token);
+    }
+
+    public class LoginModel
+    {
+        [Required(ErrorMessage = "Имя обязательно")]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Пароль обязателен")]
+        [MinLength(4, ErrorMessage = "Пароль должен содержать минимум 4 символа")]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    // Response model provided by backend: see AdminP.Shared.LoginResults
+
+}

@@ -1,0 +1,80 @@
+@page "/computers/cards"
+@inject IComputerService ComputerService
+@inject IMetricsHubService MetricsHub
+@inject IConfiguration Config
+@inject NavigationManager Nav
+
+<PageTitle>Карточки ПК</PageTitle>
+
+<div class="row g-3">
+    @if (ComputerService.Computers == null || !ComputerService.Computers.Any())
+    {
+        <div class="col-12">
+            <div class="alert alert-info">Нет компьютеров</div>
+        </div>
+    }
+    else
+    {
+        @foreach (var pc in ComputerService.Computers)
+        {
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title mb-1">@pc.Name</h5>
+                        <span class="badge @(pc.IsOnline ? "bg-success" : "bg-secondary")">@(pc.IsOnline ? "Онлайн" : "Оффлайн")</span>
+                    </div>
+                    <div class="text-muted">@pc.Uuid</div>
+                    <div class="mt-2"><strong>IP:</strong> @pc.IP</div>
+                    <div class="mt-2"><strong>Статус:</strong> @(pc.IsInUse ? "Занят" : "Свободен")</div>
+
+                    @if (pc.LatestMetrics != null)
+                    {
+                        <div class="mt-3">
+                            <div class="small">CPU @pc.LatestMetrics.Cpu.ToString("F1")%</div>
+                            <div class="progress"><div class="progress-bar" style="width:@pc.LatestMetrics.Cpu%"></div></div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="small">RAM @pc.LatestMetrics.Ram.ToString("F1")%</div>
+                            <div class="progress"><div class="progress-bar bg-warning" style="width:@pc.LatestMetrics.Ram%"></div></div>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer d-flex justify-content-end gap-2">
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(pc.Uuid)">Удалить</button>
+                </div>
+            </div>
+        </div>
+        }
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        ComputerService.OnChanged += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ComputerService.InitializeAsync();
+            await MetricsHub.StartAsync("http://192.168.1.87:5100/api/admins");
+            MetricsHub.OnAddPcRequested += uuid =>
+            {
+                // This will trigger the notification service which will open the modal in MainLayout
+                StateHasChanged();
+            };
+            MetricsHub.OnPcDeleted += uuid => { InvokeAsync(StateHasChanged); };
+            StateHasChanged();
+        }
+    }
+
+    private async Task Delete(Guid uuid)
+    {
+        await ComputerService.DeleteComputerAsync(uuid);
+    }
+}
+
+
